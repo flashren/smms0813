@@ -4,19 +4,8 @@ var router = express.Router();
 //引入crypto模块
 var md5=require("crypto");
 
-//1 引入mysql模块
-var mysql= require('mysql');
-
-//2 链接数据库
-var connection = mysql.createConnection({
-  host     : 'localhost',
-  user     : 'root',
-  password : 'root',
-  database : 'smms'
-});
-
-//3 打开数据库链接
-connection.connect();
+//引入数据库链接模块
+var connection=require("./mysqlConn");
 
 /* 添加用户的路由 */
 router.post('/add', function(req, res, next) {
@@ -140,6 +129,60 @@ router.post('/save', function(req, res, next) {
       res.send({"isOk":false,"msg":"账号修改失败!"});
     }
   });
+});
+
+//验证用户是否合法登录的路由
+router.post("/loginCheck",(req,res,next)=>{
+    // 2）后端路由接收前端传入的用户名和密码，并根据用户名和密码做数据库查询
+    let {username,checkPass} =req.body;
+    let sqlStr="select u_id from userTable where userName=? and userPwd=?";
+    //对密码进行md5加密
+    checkPass=md5.createHash("md5").update(checkPass).digest("hex");
+    let sqlParams=[username,checkPass];
+
+    // 3）后端如果查询到结果说明成功，否则失败，验证登录成功要写入cookie
+    connection.query(sqlStr,sqlParams,function (err,result) {
+      if(err) throw err;
+      console.log("查询的结果",result);
+      //如果result是空数组说明用户名或者密码不正确，如果不是空数组说明用户合法
+      //成功的result值   [ RowDataPacket { u_id: 54 } ]
+      if(result.length>0){
+        //登录成功就写入cookie
+        res.cookie("username",username);
+        res.cookie("u_id",result[0].u_id);
+        res.send({isOk:true,msg:"用户登录成功!"});
+      }
+      else{
+        res.send({isOk:false,msg:"用户登录失败!"});
+      }
+    });
+
+    // 4）后端根据成功还是失败返回结果到前端
+});
+
+
+//退出登录就销毁cookie
+router.get("/signOut",(req,res)=>{
+  //清除cookie
+  res.clearCookie("username");
+  res.clearCookie("u_id");
+  //跳转到登录页面
+  res.redirect("/signin.html");
+});
+
+
+//验证身份的合法性，有cookie合法，没有cookie不合法
+router.get("/checkState",(req,res)=>{
+  //读取cookie
+  var username=req.cookies.username;
+
+  //username不存在就是非法就跳转到登录页面
+  if(!username){
+    res.send("alert('非法入侵，请登录!');location.href='signin.html';")
+  }
+  else{
+    res.send("");  //成功也要响应一个内容，否则路由一直挂起
+  }
 });
 
 module.exports = router;
